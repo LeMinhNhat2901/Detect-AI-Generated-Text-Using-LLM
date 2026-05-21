@@ -218,8 +218,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Thêm vào file .gitignore
-*.pt
+# *.pt
 *.pth
 *.bin
 *.safetensors
-*.pkl
+# *.pkl
