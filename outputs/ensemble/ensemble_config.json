@@ -1,0 +1,19 @@
+{
+  "model_names": [
+    "LR (TF-IDF)",
+    "LightGBM (TF-IDF)",
+    "DeBERTa-v3-base"
+  ],
+  "weights": [
+    0.3937382725441252,
+    0.4084723405115768,
+    0.197789386944298
+  ],
+  "individual_aucs": {
+    "LR (TF-IDF)": 0.9998197528060855,
+    "LightGBM (TF-IDF)": 0.9997435927551381,
+    "DeBERTa-v3-base": 0.5022466693027753
+  },
+  "simple_avg_auc": 0.9998285224349814,
+  "ensemble_auc": 0.9998288356360134
+}
