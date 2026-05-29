@@ -1,34 +1,50 @@
+# Core numerical stack
+# Keep NumPy below 2.x to avoid binary ABI conflicts with matplotlib/scipy/lightgbm
+# on Windows/Conda environments.
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+pyarrow==17.0.0
 
-numpy>=1.24.0
-pandas>=2.0.0
-scipy>=1.11.0
+# Visualization / EDA
+matplotlib==3.9.2
+seaborn==0.13.2
 
+# Classical ML baselines and ensemble
+scikit-learn==1.5.2
+lightgbm==4.5.0
+xgboost==2.1.1
 
-matplotlib>=3.7.0
-seaborn>=0.12.0
+# Deep learning
+# For Kaggle, torch is usually preinstalled and does not need reinstalling.
+# For local CUDA, install the matching PyTorch wheel first if needed, e.g.:
+#   pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1
 
-scikit-learn>=1.3.0
-lightgbm>=4.0.0
-xgboost>=2.0.0
-# Install PyTorch separately with CUDA support:
-# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-torch>=2.0.0
+# Hugging Face / DeBERTa-v3
+transformers==4.44.2
+tokenizers==0.19.1
+accelerate==0.34.2
+datasets==2.21.0
+evaluate==0.4.3
+safetensors==0.4.5
+sentencepiece==0.2.0
+protobuf==4.25.5
 
-transformers>=4.35.0
-datasets>=2.14.0
-tokenizers>=0.15.0
-accelerate>=0.24.0
-gradio>=4.44.0
-sentencepiece>=0.1.99    
-protobuf>=3.20.0         
+# Web demo
+gradio==4.44.1
+fastapi==0.112.4
+uvicorn==0.30.6
 
-evaluate>=0.4.0          
-safetensors>=0.4.0       
+# Notebook/runtime utilities
+jupyter==1.1.1
+jupyterlab==4.2.5
+notebook==7.2.2
+ipykernel==6.29.5
+ipywidgets==8.1.5
+tqdm==4.66.5
 
-jupyter>=1.0.0
-ipykernel>=6.25.0
-ipywidgets>=8.0.0
-tqdm>=4.65.0
-
-python-dotenv>=1.0.0
-pyyaml>=6.0
+# General utilities
+python-dotenv==1.0.1
+pyyaml==6.0.2
+packaging==24.1
