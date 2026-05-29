@@ -106,7 +106,7 @@ Sau khi đã train xong model, bạn có thể chạy giao diện web với chec
 ### 1) Cài dependencies
 
 ```bash
-pip install -r web_ui/requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 2) Chạy ứng dụng Gradio
@@ -123,4 +123,3 @@ App mặc định chạy tại: `http://127.0.0.1:7860`
 - Nút `Analyze` để dự đoán AI/Human.
 - Hiển thị nhãn màu (đỏ/xanh), confidence bar và xác suất chi tiết.
 - Có nút `Clear` và ví dụ mẫu để test nhanh.
-- Tự dùng GPU (`cuda`) nếu có, fallback CPU nếu không có.
