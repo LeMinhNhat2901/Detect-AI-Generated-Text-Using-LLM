@@ -27,6 +27,11 @@ DEFAULT_MODEL_NAME = "microsoft/deberta-v3-base"
 DEFAULT_MAX_LENGTH = 512
 MAX_WORDS = 2000
 
+# Cấu hình Sliding Window tối ưu tài nguyên
+WINDOW_SIZE = 490     
+STRIDE = 320
+
+
 # Suppress warnings
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
@@ -49,6 +54,7 @@ class DetectorService:
         self.max_length = int(self.config.get("max_length", DEFAULT_MAX_LENGTH))
         self.pooling = self.config.get("pooling", "mean")
         self.dropout = float(self.config.get("dropout", 0.1))
+        
         tokenizer_source = str(LOCAL_TOKENIZER_DIR) if LOCAL_TOKENIZER_DIR.exists() else self.model_name
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
         self.model = self._load_model()
@@ -77,23 +83,51 @@ class DetectorService:
         return model
 
     @torch.no_grad()
-    def predict(self, text: str) -> Tuple[str, float, float]:
-        encoded = self.tokenizer(
-            text,
-            max_length=self.max_length,
-            truncation=True,
-            padding="max_length",
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
-        encoded = {k: v.to(self.device) for k, v in encoded.items()}
-        logits = self.model(**encoded)
+    def predict_long_text(self, text: str) -> Tuple[str, float, float]:
+        """Sử dụng Sliding Window để xử lý text dài"""
+        if not text or not text.strip():
+            return "Human-Written", 0.0, 1.0
+
+        # Tokenize toàn bộ văn bản
+        tokens = self.tokenizer.encode(text, add_special_tokens=True)
+        
+        if len(tokens) <= self.max_length:
+            # Text ngắn → predict bình thường
+            return self._predict_single_chunk(tokens)
+
+        # Sliding Window cho text dài
+        ai_probs = []
+        start = 0
+        
+        while start < len(tokens):
+            end = min(start + WINDOW_SIZE, len(tokens))
+            chunk = tokens[start:end]
+            
+            _, ai_prob, _ = self._predict_single_chunk(chunk)
+            ai_probs.append(ai_prob)
+            
+            start += STRIDE
+            if end >= len(tokens):
+                break
+
+        # Tính trung bình xác suất
+        avg_ai_prob = sum(ai_probs) / len(ai_probs)
+        label = "AI-Generated" if avg_ai_prob >= 0.5 else "Human-Written"
+        human_prob = 1.0 - avg_ai_prob
+        
+        return label, avg_ai_prob, human_prob
+
+    def _predict_single_chunk(self, tokens) -> Tuple[str, float, float]:
+        """Predict trên một chunk tokens"""
+        input_ids = torch.tensor([tokens[:self.max_length]]).to(self.device)
+        attention_mask = torch.ones_like(input_ids).to(self.device)
+        
+        logits = self.model(input_ids=input_ids, attention_mask=attention_mask)
         probs = torch.softmax(logits.float(), dim=-1).squeeze(0)
+        
         human_prob = float(probs[0].item())
         ai_prob = float(probs[1].item())
-        label = "AI-Generated" if ai_prob >= 0.5 else "Human-Written"
-        confidence = ai_prob if label == "AI-Generated" else human_prob
-        return label, confidence, ai_prob
+        return "AI-Generated" if ai_prob >= 0.5 else "Human-Written", ai_prob, human_prob
 
 
 SERVICE = DetectorService(CHECKPOINT_PATH, TUNING_CONFIG_PATH)
@@ -105,14 +139,26 @@ EXAMPLES = [
 ]
 
 
-def render_label(label: str, confidence: float) -> str:
-    color = "#ef4444" if label == "AI-Generated" else "#22c55e"
-    return (
-        "<div class='prediction-card'>"
-        f"<div class='prediction-label' style='color:{color};'>{label}</div>"
-        f"<div class='prediction-confidence'>Confidence: {confidence * 100:.2f}%</div>"
-        "</div>"
-    )
+def get_prediction_level(ai_prob: float):
+    if ai_prob < 0.30:
+        return "Definitely Human-Written", "#22c55e", "Very low chance of being AI"
+    elif ai_prob < 0.50:
+        return "Likely Human-Written", "#86efac", "Leaning towards human"
+    elif ai_prob < 0.75:
+        return "Likely AI-Generated", "#fbbf24", "Leaning towards AI"
+    else:
+        return "Definitely AI-Generated", "#ef4444", "Very high chance of being AI"
+
+
+def render_label(label: str, confidence: float, description: str) -> str:
+    color = "#ef4444" if "AI" in label else "#22c55e"
+    return f"""
+    <div class='prediction-card'>
+        <div class='prediction-label' style='color:{color};'>{label}</div>
+        <div class='prediction-confidence'>Confidence: {confidence * 100:.2f}%</div>
+        <div style='font-size:14px; color:#cbd5e1; margin-top:8px;'>{description}</div>
+    </div>
+    """
 
 
 def analyze_text(text: str):
@@ -124,10 +170,13 @@ def analyze_text(text: str):
     if words > MAX_WORDS:
         raise gr.Error(f"Text is too long ({words} words). Maximum allowed is {MAX_WORDS} words.")
 
-    label, confidence, ai_prob = SERVICE.predict(text)
-    human_prob = 1.0 - ai_prob
+    # Sử dụng Sliding Window
+    label, ai_prob, human_prob = SERVICE.predict_long_text(text)
+    label_level, color, description = get_prediction_level(ai_prob)
+    confidence = ai_prob if "AI" in label_level else human_prob
+
     return (
-        render_label(label, confidence),
+        render_label(label_level, confidence, description),
         confidence * 100,
         {"AI Probability": round(ai_prob, 4), "Human Probability": round(human_prob, 4)},
         words,
@@ -202,7 +251,6 @@ CUSTOM_CSS = """
     color: #cbd5e1;
 }
 
-/* Force dark mode elements */
 body, .gradio-container {
     background: #020617 !important;
 }
@@ -219,12 +267,11 @@ with gr.Blocks(
         gr.Markdown(
             """
             <p class='title-text'>AI Text Detector</p>
-            <p class='subtitle-text'>Distinguish between AI-Generated and Human-Written text using a fine-tuned DeBERTa model.</p>
+            <p class='subtitle-text'>Distinguish between AI-Generated and Human-Written text using Sliding Window + fine-tuned DeBERTa</p>
             """
         )
 
     with gr.Row(equal_height=True):
-        # Left Column
         with gr.Column(scale=3, min_width=340):
             device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
             gr.Markdown(
@@ -246,13 +293,12 @@ with gr.Blocks(
                 <div class="info-card">
                 <h3 style="margin-top:0; color:#e2e8f0;">How It Works</h3>
                 <p>1) Tokenize input text<br>
-                   2) Predict with fine-tuned DeBERTa<br>
-                   3) Return prediction + confidence + probabilities.</p>
+                   2) Sliding Window (overlap) for long texts<br>
+                   3) Return 4-level prediction + confidence.</p>
                 </div>
                 """
             )
 
-        # Main Column
         with gr.Column(scale=7, min_width=700):
             text_input = gr.Textbox(
                 label="Input Text",
@@ -319,4 +365,4 @@ if __name__ == "__main__":
         server_port=7860,
         show_error=True,
         css=CUSTOM_CSS
-)
+    )
